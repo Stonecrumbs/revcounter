@@ -4,9 +4,12 @@
 
 This project implements a custom automotive dashboard using:
 
-**MCP2515** to read from CAN BUS
+**MCP2515** to read from CAN BUS.
+
 **Arduino Nano Every** to read data from MCP2515 and transmit data via UART.
+
 **AZ Delivery ESP32** with a **Waveshare 1.85"** round TFT display to render RPM, temperature, and battery voltage using **LVGL** graphics library.
+
 
 The system simulates or receives data like RPM, engine temperature, and battery voltage, processes it on the ESP32, and displays it with a gauge-style UI similar to a car dashboard. It includes emergency state handling and serial communication error detection.
 
