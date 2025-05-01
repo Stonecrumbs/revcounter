@@ -2,16 +2,9 @@
 TX_SERIAL_NANO_v2
 This sketch grabs data from CAN Bus and sends it through UART TX
 
-Based on Working version TX_SERIAL_NANO_v1. 
+In demo mode you can send new values via UART. i.e. R5000, V13 or T70
 
-Upgrades to be:
-  - RPM, Temp and Volt will be separated into three messages. They will
-  no longer be part of the same csv line.
-  R99999 is an integer where R stands for RPM.
-  T99.9 Same as RPM but T stands for Temperature
-  V99.99 you know the drill.
 
-  - Each value will only be sent when differs from the previous read.
 
 ********************************************************************/
 
@@ -19,7 +12,7 @@ Upgrades to be:
 #include <mcp2515.h>
 
 bool isDemoMode = false;
-bool activateLogOutputSerial = true;
+bool activateLogOutputSerial = false;
 
 // MCP2515 Config
 struct can_frame canMsg;
@@ -30,52 +23,51 @@ volatile uint16_t rpm = 0;
 volatile float temperature = 0.0;
 volatile float voltage = 0.0;
 
-// for controlling the previous value. RPM is allways changing
 volatile float previous_temperature = 0.0;
 volatile float previous_voltage = 0.0;
 
-// Adjust constants to temp curve and voltage
 float TEMP_SLOPE = 1.024;
 float TEMP_OFFSET = -40;
 float VOLTAGE_FACTOR = 0.104; 
 
+const int writeIntervalMs = 200;
 
 void sendSerial1(){
+  if (activateLogOutputSerial) {
+    Serial.print("R");
+    Serial.println(rpm);
+
+    if (previous_temperature != temperature){
+      Serial.print("T");
+      Serial.println(temperature, 1);
+    }
+
+    if (previous_voltage != voltage){
+      Serial.print("V");
+      Serial.println(voltage, 2);
+    }
+  }
+
   Serial1.print("R");
   Serial1.println(rpm);
 
   if (previous_temperature != temperature){
     Serial1.print("T");
-    Serial1.println(temperature, 1); // 1 decimal for temperature
+    Serial1.println(temperature, 1);
     previous_temperature = temperature;
   }
 
   if (previous_voltage != voltage){
     Serial1.print("V");
-    Serial1.println(voltage, 2);   // 2 decimals for voltage
+    Serial1.println(voltage, 2);
     previous_voltage = voltage;
   }
 }
 
-//Serial output for logging
-void sendSerial(){
-  Serial.print("R");
-  Serial.println(rpm);
-
-  Serial.print("T");
-  Serial.println(temperature, 1); // 1 decimal for temperature
-  previous_temperature = temperature;
-
-  Serial.print("V");
-  Serial.println(voltage, 2);   // 2 decimals for voltage
-  previous_voltage = voltage;
-}
-
 void setup() {
-  Serial.begin(115200);    // for output log
-  Serial1.begin(115200);    // For UART 
+  Serial.begin(115200);    
+  Serial1.begin(115200);    
 
-  // Inicialise MCP2515
   mcp2515.reset();
   mcp2515.setBitrate(CAN_500KBPS, MCP_8MHZ); 
   mcp2515.setNormalMode();
@@ -86,19 +78,54 @@ void setup() {
 }
 
 void loop() {
+  // Input RPM override from Serial when in demo mode
+  if (Serial.available()) {
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+    if (isDemoMode && input.startsWith("R")) {
+      int newRpm = input.substring(1).toInt();
+      if (newRpm > 0) {
+        rpm = newRpm;
+        if (activateLogOutputSerial) {
+          Serial.print("RPM manually set to: ");
+          Serial.println(rpm);
+        }
+      }
+    }
+    if (isDemoMode && input.startsWith("T")) {
+      int newTemp = input.substring(1).toInt();
+      if (newTemp > 0) {
+        temperature = newTemp;
+        if (activateLogOutputSerial) {
+          Serial.print("Temp manually set to: ");
+          Serial.println(temperature);
+        }
+      }
+    }   
+    if (isDemoMode && input.startsWith("V")) {
+      int newVolt = input.substring(1).toInt();
+      if (newVolt > 0) {
+        voltage = newVolt;
+        if (activateLogOutputSerial) {
+          Serial.print("Volt manually set to: ");
+          Serial.println(voltage);
+        }
+      }
+    }    
+  }
+
   if (isDemoMode) {
     static unsigned long lastSend = 0;
-    if (millis() - lastSend > 100) { // send every 100 ms
+    if (millis() - lastSend > writeIntervalMs) {
       lastSend = millis();
-      rpm = 5000+(lastSend/100);
-      temperature = 1.1+(lastSend/1000);
-      voltage = 15.2+(lastSend/1000);
-      
-      sendSerial1();
 
-      if (activateLogOutputSerial) {
-        sendSerial();
-      }
+      // Solo actualizamos si no se ha sobreescrito por Serial
+      
+      //rpm = 1000+(lastSend/100);
+      //temperature = 1.1+(lastSend/1000);
+      //voltage = 15.2+(lastSend/1000);
+
+      sendSerial1();
     }
   }
   else {  
@@ -120,13 +147,9 @@ void loop() {
     }
 
     static unsigned long lastSend = 0;
-    if (millis() - lastSend > 200) { // send every 200 ms
-
+    if (millis() - lastSend > writeIntervalMs) {
+      lastSend = millis();
       sendSerial1();
-
-      if (activateLogOutputSerial) {
-        sendSerial();
-      }
     }
   }
 }

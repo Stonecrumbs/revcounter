@@ -1,6 +1,6 @@
 /*
 
-ESP32_Gauge_V3.ino
+ESP32_Gauge_V4.ino
 
 From v2 version
 This version has all the LVGL components in place and the right color scheme.
@@ -8,13 +8,14 @@ Read data from UART, coming from Arduino NANO
 Emergency blinking 
 UART Error detection
 
+From V3
 This version will take the new format for indepenent messages R, T and V.
 The amount of buffer lines has been increased to buf[240 * 20]
 A second buffer has been added.
+
+This version
 Get rid of PID and use just average
 
-posibles mejoras en V5
-Hacer que las etiquetas/textos solo se actualicen si el valor cambió (para ahorrar ciclos).
 
 */
 #include <lvgl.h>
@@ -25,7 +26,7 @@ Hacer que las etiquetas/textos solo se actualicen si el valor cambió (para ahor
 #define RXD1 27
 #define TXD1 26
 
-bool activateLogOutputSerial = true;
+bool activateLogOutputSerial = false;
 
 // Global Objects
 TFT_eSPI tft = TFT_eSPI(); /* TFT instance */
@@ -42,9 +43,14 @@ float voltage = 0.0;
 char tempStr[10];
 char voltStr[10];
 
+//To avoid update T and V if nothing changes.
+float lastTemperature = -1.0;
+float lastVoltage = -1.0;
+
+
 // PID conf and read
-const int readIntervalMs = 50;       // Intervalo de lectura
-const int rpmBufferSize = 10;       // Tamaño del buffer para el promedio
+const int readIntervalMs = 50;       // Reading interval in milliseconds
+const int rpmBufferSize = 5;       // buffer size for calculating the average
 
 // RPM Buffer (average in rpmBufferSize reads)
 int rpmBuffer[rpmBufferSize];
@@ -103,7 +109,7 @@ void ReadSerial2Data() {
     if (inChar == '\n') {
       inputString.trim(); // Clean spaces and \r
       if (activateLogOutputSerial) {
-        Serial.println("Datos recibidos: " + inputString);
+        Serial.println("Data received: " + inputString);
       }
       
 
@@ -117,24 +123,39 @@ void ReadSerial2Data() {
         String dataType = inputString.substring(0, 1);
         String dataValue = inputString.substring(1);
 
-        if (dataType == "R")
+        if (dataType == "R") {
           rpm = dataValue.toInt();
-        if (dataType == "T")
-          temperature = dataValue.toFloat();
-        if (dataType == "V")
-          voltage = dataValue.toFloat();
-
-        if (activateLogOutputSerial) {
-          Serial.print("RPM: ");
-          Serial.println(rpm);
-          Serial.print("Temperatura: ");
-          Serial.println(temperature);
-          Serial.print("Voltaje: ");
-          Serial.println(voltage);
+          if (activateLogOutputSerial) {
+            Serial.print("RPM: ");
+            Serial.println(rpm);
+          }          
         }
+
+        if (dataType == "T") {
+          float newTemp = dataValue.toFloat();
+          if (newTemp != temperature) {
+            temperature = newTemp;
+            if (activateLogOutputSerial) {
+              Serial.print("Temperatura: ");
+              Serial.println(temperature);
+            }     
+          }
+        }
+
+        if (dataType == "V") {
+          float newVolt = dataValue.toFloat();
+          if (newVolt != voltage) {
+            voltage = newVolt;
+            if (activateLogOutputSerial) {
+              Serial.print("Voltaje: ");
+              Serial.println(voltage);
+            }     
+          }
+        }
+
       } else {
         if (activateLogOutputSerial) {
-          Serial.println("Error: The frame is wrong");
+          Serial.println("Error: Badly formed frame");
         }
       }
 
@@ -250,7 +271,8 @@ void loop() {
     }
   } else {
     // Only updates in case of timeout
-    // gets average and PID
+    
+    // average calculation
     float rpmAverage = getRPMaverage();
     int newRPM = round(rpmAverage);
 
